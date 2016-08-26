@@ -20,7 +20,7 @@
             <AppenderRef ref="File"/>
         </Root>
 
-        <Logger name="com.sankholin.comp90049.project1" level="debug"/>
+        <Logger name="com.sankholin.comp90049.project1" level="INFO"/>
 
     </Loggers>
 

@@ -1,16 +1,17 @@
 package com.sankholin.comp90049.project1;
 
 import com.opencsv.CSVWriter;
-import com.sankholin.comp90049.project1.editdistance.LevenshteinDistance;
+import com.sankholin.comp90049.project1.editdistance.GlobalEditDistance;
+import com.sankholin.comp90049.project1.editdistance.LocalEditDistance;
 import com.sankholin.comp90049.project1.editdistance.NGramDistance;
-import com.sankholin.comp90049.project1.editdistance.NWEditDistance;
-import com.sankholin.comp90049.project1.editdistance.StringDistance;
-import com.sankholin.comp90049.project1.model.ResultModel;
+import com.sankholin.comp90049.project1.model.MatchTermCandidate;
+import com.sankholin.comp90049.project1.phonetic.SoundexAdapter;
+import com.sankholin.comp90049.project1.tool.GazetteerAnalyzer;
+import com.sankholin.comp90049.project1.tool.Utilities;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.builder.fluent.Configurations;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
@@ -21,80 +22,144 @@ import org.kohsuke.args4j.Option;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class App {
 
-    @Option(name = "-a", usage = "lv=Levenshtein,nw=Needleman–Wunsch,ng=NGram")
-    private String algorithm = "lv";
+    @Option(name = "-a", usage = "ged=Global Edit Distance,led=Local Edit Distance,ngm=NGram,sdx=Soundex")
+    private String algorithm = "ged";
+
+    @Option(name = "--single", usage = "Single Word Location, ignore if '-a led'")
+    private boolean single = false;
 
     @Option(name = "-d", usage = "Dryrun for first few lines up to d")
-    private int dryrun = 0;
+    private int dryRun = 0;
+
+    @Option(name = "-i", usage = "Start index of Tweet")
+    private int startIdx = 0;
 
     @Option(name = "-o", usage = "output to this file", metaVar = "OUTPUT")
     private File out = new File("output.csv");
 
+    @Option(name = "-c", usage = "config file")
+    private File configFile = new File("./config.properties");
+
+    @Option(name = "-xx", usage = "xx=Lower limit of score")
+    private Integer lowerLimit = null;
+
+    @Option(name = "-zz", usage = "zz=Upper limit of score")
+    private Integer upperLimit = null;
+
     private CSVWriter writer;
-    private StandardAnalyzer standardAnalyzer;
     private List<String> tweets;
     private List<String> gazetteer;
-    private StringDistance stringDistance;
+    private StringSearch stringSearch;
+    private Utilities util = Utilities.getInstance();
+    private boolean isTokenize = true;
+    private boolean isMinimalScore;
+    private int candidateLimit = 1;
+    private int minCharLocationName = 2;
+
+    private StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
+    private GazetteerAnalyzer gazetteerAnalyzer = new GazetteerAnalyzer();
 
     public static void main(String[] args) {
         new App().doMain(args);
     }
 
     private void doMain(String[] args) {
-        File configFile = new File("./config.properties");
-        logger.info("Reading config file: " +configFile.toString());
-        Configurations configs = new Configurations();
-        CmdLineParser parser = new CmdLineParser(this);
-
         try {
-
-            logger.info("Parsing args");
-            parser.parseArgument(args);
-            logger.info("option: -d " +dryrun);
-            logger.info("option: -a " +algorithm);
-            logger.info("option: -o " +out.toString());
-
+            logger.info("Reading config file: " +configFile.toString());
+            Configurations configs = new Configurations();
             Configuration config = configs.properties(configFile);
             logger.info("Tweet collection: " +config.getString("tweets"));
             logger.info("Gazetteer: " +config.getString("gazetteer"));
 
-            int minNGramLength = config.getInt("minngramlength");
-            int maxNGramLength = config.getInt("maxngramlength");
+            CmdLineParser parser = new CmdLineParser(this);
+            logger.info("Parsing args...");
+            parser.parseArgument(args);
+            logger.info("option: -d " + dryRun);
+            logger.info("option: -i " + startIdx);
+            logger.info("option: -a " + algorithm);
+            logger.info("option: -o " + out.toString());
+            logger.info("option: -c " + configFile.toString());
 
-            standardAnalyzer = new StandardAnalyzer();
-
-            //setup LevenshteinDistance
-            if (algorithm.equalsIgnoreCase("lv")) {
-                LevenshteinDistance levenshteinDistance = new LevenshteinDistance();
-                levenshteinDistance.setMatch(config.getInt("lv.match"));
-                levenshteinDistance.setInsertion(config.getInt("lv.insertion"));
-                levenshteinDistance.setDeletion(config.getInt("lv.deletion"));
-                levenshteinDistance.setReplace(config.getInt("lv.replace"));
-                levenshteinDistance.printScore();
-                stringDistance = levenshteinDistance;
+            if (lowerLimit != null) {
+                logger.info("option: -xx " + lowerLimit);
+                logger.warn("Lower limit option [-xx] is only applied for m < i,d,r and NGram.");
             }
 
-            //setup NWEditDistance
-            if (algorithm.equalsIgnoreCase("nw")) {
-                NWEditDistance nwEditDistance = new NWEditDistance();
-                nwEditDistance.setMatch(config.getInt("nw.match"));
-                nwEditDistance.setInsertion(config.getInt("nw.insertion"));
-                nwEditDistance.setDeletion(config.getInt("nw.deletion"));
-                nwEditDistance.setReplace(config.getInt("nw.replace"));
-                nwEditDistance.printScore();
-                stringDistance = nwEditDistance;
+            if (upperLimit != null) {
+                logger.info("option: -zz " + upperLimit);
+                logger.warn("Upper limit option [-zz] is only applied for m > i,d,r and Soundex.");
+            }
+
+            if (single && !algorithm.equalsIgnoreCase("led")) {
+                logger.info("option: --single");
+                logger.info("Processing in single-word gazetteer matching...");
+            } else {
+                logger.info("Processing in multi-word gazetteer matching...");
+            }
+
+            int minNGramLength = config.getInt("minngramlength");
+            int maxNGramLength = config.getInt("maxngramlength");
+            candidateLimit = config.getInt("candidatelimit");
+            if (candidateLimit < 1) candidateLimit = 1;
+            minCharLocationName = config.getInt("mincharlocationname");
+
+            // Default to true for GED and LED (m < i,d,r) and NGram
+            isMinimalScore = true;
+
+            //setup GlobalEditDistance
+            if (algorithm.equalsIgnoreCase("ged")) {
+                GlobalEditDistance globalEditDistance = new GlobalEditDistance();
+                globalEditDistance.setMatch(config.getInt("ged.match"));
+                globalEditDistance.setInsertion(config.getInt("ged.insertion"));
+                globalEditDistance.setDeletion(config.getInt("ged.deletion"));
+                globalEditDistance.setReplace(config.getInt("ged.replace"));
+                globalEditDistance.printScore();
+                isMinimalScore = globalEditDistance.isMinimalScore();
+                stringSearch = globalEditDistance;
+            }
+
+            //setup LocalEditDistance
+            if (algorithm.equalsIgnoreCase("led")) {
+                isTokenize = false;
+                LocalEditDistance localEditDistance = new LocalEditDistance();
+                localEditDistance.setMatch(config.getInt("led.match"));
+                localEditDistance.setInsertion(config.getInt("led.insertion"));
+                localEditDistance.setDeletion(config.getInt("led.deletion"));
+                localEditDistance.setReplace(config.getInt("led.replace"));
+                localEditDistance.printScore();
+                isMinimalScore = localEditDistance.isMinimalScore();
+                stringSearch = localEditDistance;
+                candidateLimit = 1; // LED only has one candidate to output
             }
 
             //setup NGramDistance
-            if (algorithm.equalsIgnoreCase("ng")) {
+            if (algorithm.equalsIgnoreCase("ngm")) {
                 NGramDistance nGramDistance = new NGramDistance();
+                if (maxNGramLength < minNGramLength) {
+                    logger.error("NGram max length is smaller than min. " + maxNGramLength + " > " + minNGramLength + ". Halt!");
+                    return;
+                }
                 nGramDistance.setMinNGramLength(minNGramLength);
                 nGramDistance.setMaxNGramLength(maxNGramLength);
-                stringDistance = nGramDistance;
+                stringSearch = nGramDistance;
+            }
+
+            //step SoundexAdapter
+            if (algorithm.equalsIgnoreCase("sdx")) {
+                SoundexAdapter soundexAdapter = new SoundexAdapter();
+                isMinimalScore = false; // based on org.apache.commons.codec.language.Soundex.difference()
+                stringSearch = soundexAdapter;
+            }
+
+            if (stringSearch == null) {
+                logger.error("Unrecognized algorithm option '-a " + algorithm  + "'. Halt!");
+                return;
             }
 
             File tweetsFile = new File(config.getString("tweets"));
@@ -104,7 +169,17 @@ public class App {
             gazetteer = FileUtils.readLines(gazetteerFile, "UTF-8");
 
             writer = new CSVWriter(new FileWriter(out));
-            String[] titleText = {"Tweet UserId", " Tweet Id", "Tweet Text", "Tweet Timestamp", "Match Term", "Location", "Score"};
+            String[] titleText = new String[4+candidateLimit*3];
+            titleText[0] = "Tweet UserId";
+            titleText[1] = "Tweet Id";
+            titleText[2] = "Tweet Text";
+            titleText[3] = "Tweet Timestamp";
+            for (int i=4; i < titleText.length;) {
+                titleText[i] = "Location";
+                titleText[i+1] = "Match Term";
+                titleText[i+2] = "Score";
+                i = i + 3;
+            }
             writer.writeNext(titleText);
 
             start();
@@ -115,93 +190,204 @@ public class App {
     }
 
     private void start() throws IOException {
-        int idx = 0;
-        for (String tweet : tweets) {
-            if (dryrun > 0 && idx == dryrun) break; //just test first few lines
+        if (startIdx < 0) startIdx = 0;
+        if (startIdx > 0) dryRun = dryRun + startIdx;
+
+        for (int i = startIdx; i < tweets.size(); i++) {
+
+            if (dryRun > 0 && i == dryRun) break; //just test first few lines
+
+            String tweet = tweets.get(i);
 
             String[] aRawTweet = tweet.split("\\t");
             if (aRawTweet.length != 4) {
-                String msg = "Tweet anomaly at index: [" + idx + "] \t\t" + tweet;
+                String msg = "Tweet anomaly at index: [" + i + "] \t\t" + tweet;
                 logger.warn(msg);
-                FileUtils.writeStringToFile(new File("tweet_anomaly.log"), msg, "UTF-8");
-                idx++;
                 continue;
             }
-
-            //will only process tweet_text column
-            String tweetText = aRawTweet[2];
-            logger.info("Processing tweet [" + idx + "] " + tweetText);
-
-            ResultModel resultModel = new ResultModel();
-            resultModel.setTweetUserId(aRawTweet[0]);
-            resultModel.setTweetId(aRawTweet[1]);
-            resultModel.setTweetText(tweetText);
-            resultModel.setTweetTimestamp(aRawTweet[3]);
-
-            //tokenize using Lucene StandardAnalyzer
-            List<String> tokenizeTweets = StringUtilities.getInstance().tokenizeString(standardAnalyzer, tweetText);
-
-            // threshold for comparing best match among tokens
-            int threshold = Integer.MAX_VALUE;
-            if (algorithm.equalsIgnoreCase("nw")) {
-                threshold = Integer.MIN_VALUE;
-            }
-
-            // for each tweet token
-            for (String tweetToken : tokenizeTweets) {
-
-                // compare against dictionary for misspelled location
-                for (String aGazetteer : gazetteer) {
-
-                    //we will skip a blank dictionary entry, not meaningful for finding approximate match
-                    if (StringUtils.isBlank(aGazetteer)) continue;
-
-                    //won't tokenize but toLowerCase
-                    aGazetteer = aGazetteer.toLowerCase();
-
-                    // Commons Lang3 package has LevenshteinDistance implementation..
-                    // But will use our implementation. Anchor here for just to compare with our implementation.
-                    //int ged = StringUtils.getLevenshteinDistance(tweetToken, aGazetteer);
-
-                    int ged = stringDistance.getDistance(tweetToken, aGazetteer);
-
-                    if (algorithm.equalsIgnoreCase("nw")) {
-                        // Needleman–Wunsch algorithm: The lower the alignment score the larger the edit distance
-                        // therefore look for bigger score.
-                        if (ged > threshold) {
-                            threshold = ged;
-                            resultModel.setScore(threshold);
-                            resultModel.setGazetteer(aGazetteer);
-                            resultModel.setTweetToken(tweetToken);
-                        }
-                    } else {
-                        // NGram and Levenshtein Distance: A higher score indicates a greater distance
-                        // therefore look for smaller score.
-                        if (ged < threshold) { //FIXME 0 is exact match, but we are looking for misspelled? also do (.. && ged > 0)?
-                            threshold = ged;
-                            resultModel.setScore(threshold);
-                            resultModel.setGazetteer(aGazetteer);
-                            resultModel.setTweetToken(tweetToken);
-                        }
-                    }
-                }
-            }
-
-            String[] entries = {
-                    resultModel.getTweetUserId(),
-                    resultModel.getTweetId(),
-                    resultModel.getTweetText(),
-                    resultModel.getTweetTimestamp(),
-                    resultModel.getTweetToken(),
-                    resultModel.getGazetteer(),
-                    "" + resultModel.getScore()
-            };
-            writer.writeNext(entries);
-            idx++;
+            logger.info("Processing tweet [" + i + "] " + aRawTweet[2]);
+            process(aRawTweet);
         }
 
         writer.close();
         logger.info("DONE!");
+    }
+
+    private void process(String[] aRawTweet) {
+        //will only process tweet_text column
+        String tweetText = aRawTweet[2];
+
+        List<String> output = new ArrayList<>();
+        output.add(aRawTweet[0]);
+        output.add(aRawTweet[1]);
+        output.add(tweetText);
+        output.add(aRawTweet[3]);
+
+        //filter and tokenize tweet text using Lucene StandardAnalyzer
+        List<String> tokenizeTweets = util.tokenizeString(standardAnalyzer, tweetText);
+
+        //if GED and NG, process in tokens
+        if (isTokenize) {
+            List<MatchTermCandidate> candidateList;
+            if (single) {
+                candidateList = processInSingleWordLocation(tokenizeTweets);
+            } else {
+                candidateList = processInMultiWordLocation(tokenizeTweets);
+            }
+
+            if (isMinimalScore) {
+                for (Object o : candidateList.stream().sorted().limit(candidateLimit).toArray()) {
+                    MatchTermCandidate c = (MatchTermCandidate) o;
+                    output.add(c.getGazetteer());
+                    output.add(c.getTerm());
+                    output.add(c.getScore()+"");
+                }
+            } else {
+                for (Object o : candidateList.stream().sorted(Comparator.reverseOrder()).limit(candidateLimit).toArray()) {
+                    MatchTermCandidate c = (MatchTermCandidate) o;
+                    output.add(c.getGazetteer());
+                    output.add(c.getTerm());
+                    output.add(c.getScore()+"");
+                }
+            }
+
+        } else {
+            String filteredTweetText = String.join(" ", tokenizeTweets);
+            MatchTermCandidate candidate = processInMonolithicString(filteredTweetText);
+            output.add(candidate.getGazetteer());
+            output.add(candidate.getTerm());
+            output.add(candidate.getScore()+"");
+        }
+
+        writer.writeNext(output.stream().toArray(String[]::new));
+    }
+
+    private List<MatchTermCandidate> processInMultiWordLocation(List<String> tweetTokens) {
+        List<MatchTermCandidate> candidateList = new ArrayList<>();
+
+        String filteredTweetText = String.join(" ", tweetTokens);
+        int tweetTextLength = filteredTweetText.length();
+
+        for (String aTweetToken : tweetTokens) {
+            int head = filteredTweetText.indexOf(aTweetToken);
+
+            int[] threshold = {Integer.MAX_VALUE};
+            if (!isMinimalScore) threshold[0] = Integer.MIN_VALUE;
+
+            MatchTermCandidate candidate = new MatchTermCandidate();
+
+            for (String aGazetteer : gazetteer) {
+                List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
+                String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
+                int chunkSize = aFilteredGazetteer.length();
+                if (chunkSize <= minCharLocationName) continue;
+
+                int tail = head + chunkSize;
+                // location length is longer than tweet length
+                if (tail > tweetTextLength) tail = tweetTextLength;
+                String tweetChunk = filteredTweetText.substring(head, tail);
+
+                int score = stringSearch.getScore(tweetChunk, aFilteredGazetteer);
+                evaluateScore(score, threshold, candidate, aFilteredGazetteer, tweetChunk);
+            }
+
+            candidateList.add(candidate);
+        }
+
+        return candidateList;
+    }
+
+    private List<MatchTermCandidate> processInSingleWordLocation(List<String> tokenizeTweets) {
+        List<MatchTermCandidate> candidateList = new ArrayList<>();
+
+        // for each tweet token
+        for (String tweetToken : tokenizeTweets) {
+
+            int[] threshold = { Integer.MAX_VALUE };
+            if (!isMinimalScore) threshold[0] = Integer.MIN_VALUE;
+
+            // each token can be a potential MatchTermCandidate
+            MatchTermCandidate candidate = new MatchTermCandidate();
+
+            // compare against dictionary for misspelled location
+            for (String aGazetteer : gazetteer) {
+
+                List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
+                String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
+                if (aFilteredGazetteer.length() <= minCharLocationName) continue;
+
+                int score = stringSearch.getScore(tweetToken, aFilteredGazetteer);
+
+                // evaluate score
+                evaluateScore(score, threshold, candidate, aFilteredGazetteer, tweetToken);
+            }
+
+            candidateList.add(candidate);
+        }
+
+        return candidateList;
+    }
+
+    private MatchTermCandidate processInMonolithicString(String tweetText) {
+
+        int[] threshold = { Integer.MAX_VALUE };
+        if (!isMinimalScore) threshold[0] = Integer.MIN_VALUE;
+
+        MatchTermCandidate candidate = new MatchTermCandidate();
+
+        for (String aGazetteer : gazetteer) {
+
+            List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
+            String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
+            if (aFilteredGazetteer.length() <= minCharLocationName) continue;
+
+            int score = stringSearch.getScore(tweetText, aFilteredGazetteer);
+
+            evaluateScore(score, threshold, candidate, aFilteredGazetteer, tweetText);
+        }
+
+        return candidate;
+    }
+
+    /**
+     * Each tweet token, pick the best match against dictionary.
+     * TODO: how to deal with a tie breaker?
+     *
+     * @param score a calculated score, of given algorithm
+     * @param threshold a pointer, previous best score
+     * @param candidate the best match candidate - of best match pair C(tweet, gazetteer)
+     * @param aGazetteer a location to evaluate
+     * @param tweetTerm a matching term
+     */
+    private void evaluateScore(int score, int[] threshold, MatchTermCandidate candidate, String aGazetteer, String tweetTerm) {
+
+        // For m < i,d,r and NGram
+        if (isMinimalScore) {
+
+            // Not an ideal condition.
+            // But for this project, we look more for a misspelled word, i.e. exact matching is not so much
+            if (lowerLimit != null && score < lowerLimit) return;
+
+            if (score < threshold[0]) {
+                threshold[0] = score;
+                candidate.setGazetteer(aGazetteer);
+                candidate.setTerm(tweetTerm);
+                candidate.setScore(score);
+            }
+        } else {
+
+            // Not an ideal condition.
+            // But for this project, we look more for a misspelled word, i.e. exact matching is not so much
+            if (upperLimit != null && score > upperLimit) return;
+
+            // For m > i,d,r and Soundex
+            if (score > threshold[0]) {
+                threshold[0] = score;
+                candidate.setGazetteer(aGazetteer);
+                candidate.setTerm(tweetTerm);
+                candidate.setScore(score);
+            }
+        }
     }
 
     private static final Logger logger = LogManager.getLogger(App.class);

@@ -1,4 +1,4 @@
-package com.sankholin.comp90049.project1;
+package com.sankholin.comp90049.project1.tool;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,12 +11,15 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class StringUtilities {
+/**
+ * Singleton Utilities
+ */
+public final class Utilities {
 
-    private static StringUtilities instance = null;
-    private StringUtilities() {}
-    static synchronized StringUtilities getInstance() {
-        if (instance == null) instance = new StringUtilities();
+    private static Utilities instance = null;
+    private Utilities() {}
+    public static synchronized Utilities getInstance() {
+        if (instance == null) instance = new Utilities();
         return instance;
     }
 
@@ -40,5 +43,26 @@ public final class StringUtilities {
         return result;
     }
 
-    private static final Logger logger = LogManager.getLogger(StringUtilities.class);
+    public int min(int a, int b, int... more) {
+        int min = Math.min(a, b);
+        for (int m : more)
+            min = Math.min(min, m);
+        return min;
+    }
+
+    public int max(int a, int b, int... more) {
+        int max = Math.max(a, b);
+        for (int m : more)
+            max = Math.max(max, m);
+        return max;
+    }
+
+    /**
+     * Remove all non alphabet character
+     */
+    public String removeAllNonAlphabets(String s) {
+        return s.replaceAll("[^a-zA-Z]","");
+    }
+
+    private static final Logger logger = LogManager.getLogger(Utilities.class);
 }
