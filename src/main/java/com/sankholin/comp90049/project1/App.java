@@ -6,7 +6,6 @@ import com.sankholin.comp90049.project1.editdistance.LocalEditDistance;
 import com.sankholin.comp90049.project1.editdistance.NGramDistance;
 import com.sankholin.comp90049.project1.model.MatchTermCandidate;
 import com.sankholin.comp90049.project1.phonetic.SoundexAdapter;
-import com.sankholin.comp90049.project1.tool.GazetteerAnalyzer;
 import com.sankholin.comp90049.project1.tool.Utilities;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.builder.fluent.Configurations;
@@ -52,6 +51,9 @@ public class App {
     @Option(name = "-zz", usage = "zz=Upper limit of score")
     private Integer upperLimit = null;
 
+    @Option(name = "--preprocess", usage = "parted=Partition Tweets,gaze=Re-process Gazetteer")
+    private String preProcess = null;
+
     private CSVWriter writer;
     private List<String> tweets;
     private List<String> gazetteer;
@@ -60,10 +62,10 @@ public class App {
     private boolean isTokenize = true;
     private boolean isMinimalScore;
     private int candidateLimit = 1;
-    private int minCharLocationName = 2;
+    //private int minCharLocationName = 2;
 
     private StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
-    private GazetteerAnalyzer gazetteerAnalyzer = new GazetteerAnalyzer();
+    //private GazetteerAnalyzer gazetteerAnalyzer = new GazetteerAnalyzer();
 
     public static void main(String[] args) {
         new App().doMain(args);
@@ -71,20 +73,44 @@ public class App {
 
     private void doMain(String[] args) {
         try {
+            CmdLineParser parser = new CmdLineParser(this);
+            logger.info("Parsing args...");
+            parser.parseArgument(args);
+
+            logger.info("option: -c " + configFile.toString());
             logger.info("Reading config file: " +configFile.toString());
             Configurations configs = new Configurations();
             Configuration config = configs.properties(configFile);
             logger.info("Tweet collection: " +config.getString("tweets"));
-            logger.info("Gazetteer: " +config.getString("gazetteer"));
+            logger.info("Gazetteer: " +config.getString("gazetteer.preprocessed"));
 
-            CmdLineParser parser = new CmdLineParser(this);
-            logger.info("Parsing args...");
-            parser.parseArgument(args);
+            if (preProcess != null) {
+                logger.info("option: --preprocess " + preProcess);
+                logger.warn("Redirect to pre-processing steps. Init...");
+                PreProcessor processor = new PreProcessor(config);
+                if (preProcess.equalsIgnoreCase("parted")) {
+                    logger.warn("Tweet partition option is given. Please re-invoke application after partition has done.");
+                    processor.partitionTweetFile();
+                    logger.info("DONE!");
+                    logger.info("Tweet partition files are saved under " + config.getString("tweets.partition.dir"));
+                    logger.info("You might want to point to the new parted tweet file before next invocation.");
+                    logger.info("\te.g. at config.properties, change 'tweets=res/tweets/xxx_tweets_0.txt'");
+                    logger.info("Please re-run application without '--preprocess parted' option to continue main routine.");
+                    return;
+                }
+                else if (preProcess.equalsIgnoreCase("gaze")) {
+                    processor.reprocessGazetteer();
+                    logger.info("Gazetteer pre-processing has done. Continue with main routine...");
+                }
+                else {
+                    logger.error("Unrecognized PreProcessor argument. '--preprocess " + processor + "'");
+                }
+            }
+
             logger.info("option: -d " + dryRun);
             logger.info("option: -i " + startIdx);
             logger.info("option: -a " + algorithm);
             logger.info("option: -o " + out.toString());
-            logger.info("option: -c " + configFile.toString());
 
             if (lowerLimit != null) {
                 logger.info("option: -xx " + lowerLimit);
@@ -107,7 +133,7 @@ public class App {
             int maxNGramLength = config.getInt("maxngramlength");
             candidateLimit = config.getInt("candidatelimit");
             if (candidateLimit < 1) candidateLimit = 1;
-            minCharLocationName = config.getInt("mincharlocationname");
+            //minCharLocationName = config.getInt("mincharlocationname");
 
             // Default to true for GED and LED (m < i,d,r) and NGram
             isMinimalScore = true;
@@ -165,7 +191,11 @@ public class App {
             File tweetsFile = new File(config.getString("tweets"));
             tweets = FileUtils.readLines(tweetsFile, "UTF-8");
 
-            File gazetteerFile = new File(config.getString("gazetteer"));
+            File gazetteerFile = new File(config.getString("gazetteer.preprocessed"));
+            if (!gazetteerFile.canRead()) {
+                logger.error("Preprocessed gazetteer file is not found. Please run with option '--preprocess gaze'");
+                logger.error("This Gazetteer preprocessing is only required to be done once.");
+            }
             gazetteer = FileUtils.readLines(gazetteerFile, "UTF-8");
 
             writer = new CSVWriter(new FileWriter(out));
@@ -191,7 +221,7 @@ public class App {
 
     private void start() throws IOException {
         if (startIdx < 0) startIdx = 0;
-        if (startIdx > 0) dryRun = dryRun + startIdx;
+        if (startIdx > 0 && dryRun > 0) dryRun = dryRun + startIdx;
 
         for (int i = startIdx; i < tweets.size(); i++) {
 
@@ -223,7 +253,6 @@ public class App {
         output.add(tweetText);
         output.add(aRawTweet[3]);
 
-        //filter and tokenize tweet text using Lucene StandardAnalyzer
         List<String> tokenizeTweets = util.tokenizeString(standardAnalyzer, tweetText);
 
         //if GED and NG, process in tokens
@@ -277,18 +306,19 @@ public class App {
             MatchTermCandidate candidate = new MatchTermCandidate();
 
             for (String aGazetteer : gazetteer) {
-                List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
-                String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
-                int chunkSize = aFilteredGazetteer.length();
-                if (chunkSize <= minCharLocationName) continue;
+                //TODO PreProcessor
+                //List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
+                //String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
+                int chunkSize = aGazetteer.length();
+                //if (chunkSize < minCharLocationName) continue;
 
                 int tail = head + chunkSize;
                 // location length is longer than tweet length
                 if (tail > tweetTextLength) tail = tweetTextLength;
                 String tweetChunk = filteredTweetText.substring(head, tail);
 
-                int score = stringSearch.getScore(tweetChunk, aFilteredGazetteer);
-                evaluateScore(score, threshold, candidate, aFilteredGazetteer, tweetChunk);
+                int score = stringSearch.getScore(tweetChunk, aGazetteer);
+                evaluateScore(score, threshold, candidate, aGazetteer, tweetChunk);
             }
 
             candidateList.add(candidate);
@@ -311,15 +341,15 @@ public class App {
 
             // compare against dictionary for misspelled location
             for (String aGazetteer : gazetteer) {
+                //TODO PreProcessor
+                //List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
+                //String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
+                //if (aGazetteer.length() < minCharLocationName) continue;
 
-                List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
-                String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
-                if (aFilteredGazetteer.length() <= minCharLocationName) continue;
-
-                int score = stringSearch.getScore(tweetToken, aFilteredGazetteer);
+                int score = stringSearch.getScore(tweetToken, aGazetteer);
 
                 // evaluate score
-                evaluateScore(score, threshold, candidate, aFilteredGazetteer, tweetToken);
+                evaluateScore(score, threshold, candidate, aGazetteer, tweetToken);
             }
 
             candidateList.add(candidate);
@@ -336,14 +366,14 @@ public class App {
         MatchTermCandidate candidate = new MatchTermCandidate();
 
         for (String aGazetteer : gazetteer) {
+            //TODO PreProcessor
+            //List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
+            //String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
+            //if (aFilteredGazetteer.length() < minCharLocationName) continue;
 
-            List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
-            String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
-            if (aFilteredGazetteer.length() <= minCharLocationName) continue;
+            int score = stringSearch.getScore(tweetText, aGazetteer);
 
-            int score = stringSearch.getScore(tweetText, aFilteredGazetteer);
-
-            evaluateScore(score, threshold, candidate, aFilteredGazetteer, tweetText);
+            evaluateScore(score, threshold, candidate, aGazetteer, tweetText);
         }
 
         return candidate;
@@ -351,7 +381,7 @@ public class App {
 
     /**
      * Each tweet token, pick the best match against dictionary.
-     * TODO: how to deal with a tie breaker?
+     * TODO: how to deal with a tie breaker between locations?
      *
      * @param score a calculated score, of given algorithm
      * @param threshold a pointer, previous best score

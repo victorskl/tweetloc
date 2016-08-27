@@ -1,6 +1,7 @@
 package com.sankholin.comp90049.project1;
 
 import com.sankholin.comp90049.project1.editdistance.GlobalEditDistance;
+import com.sankholin.comp90049.project1.editdistance.NGramDistance;
 import com.sankholin.comp90049.project1.phonetic.SoundexAdapter;
 import com.sankholin.comp90049.project1.tool.GazetteerAnalyzer;
 import com.sankholin.comp90049.project1.tool.Utilities;
@@ -17,7 +18,6 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public class AppTest {
@@ -37,7 +37,7 @@ public class AppTest {
         Configurations configs = new Configurations();
         try {
             config = configs.properties(configFile);
-            gazetteerFile = new File(config.getString("gazetteer"));
+            gazetteerFile = new File(config.getString("gazetteer.preprocessed"));
             tweetsFile = new File(config.getString("tweets"));
         } catch (ConfigurationException e) {
             e.printStackTrace();
@@ -81,64 +81,6 @@ public class AppTest {
     }
 
     @Test @Ignore
-    public void reprocessGazetteer() {
-        try {
-
-            List<String> gazetteer = FileUtils.readLines(gazetteerFile, "UTF-8");
-            System.out.println(gazetteer.size()); // size
-
-            System.out.println(gazetteer.get(1)); // head
-            System.out.println(gazetteer.get(gazetteer.size()/2)); // mid
-            System.out.println(gazetteer.get(gazetteer.size()-1)); // tail
-
-            //gazetteer is sorted but make sure we sort it again
-            Collections.sort(gazetteer);
-
-            System.out.println("\nAfter sort...\n");
-
-            // check again
-            System.out.println(gazetteer.get(0));
-            System.out.println(gazetteer.get(1)); // head
-            System.out.println(gazetteer.get(2));
-            System.out.println(gazetteer.get(3));
-            System.out.println(gazetteer.get(4));
-            System.out.println(gazetteer.get(5));
-            System.out.println(gazetteer.get(gazetteer.size()/2)); // mid
-            System.out.println(gazetteer.get(gazetteer.size()-2));
-            System.out.println(gazetteer.get(gazetteer.size()-1)); // tail
-
-            // "Alson H Smith, Junior Library"
-            // “Rebecca of the Well” Fountain
-
-            System.out.println("\n");
-
-            // try to re-process the way we want
-
-            List<String> gazetteerNew = new ArrayList<>();
-
-            for (String s : gazetteer) {
-                s = String.join(" ", util.tokenizeString(gazetteerAnalyzer, s));
-                gazetteerNew.add(s);
-            }
-
-            Collections.sort(gazetteer);
-
-            System.out.println(gazetteerNew.get(0));
-            System.out.println(gazetteerNew.get(1)); // head
-            System.out.println(gazetteerNew.get(2));
-            System.out.println(gazetteerNew.get(3));
-            System.out.println(gazetteerNew.get(4));
-            System.out.println(gazetteerNew.get(5));
-            System.out.println(gazetteerNew.get(gazetteer.size()/2)); // mid
-            System.out.println(gazetteerNew.get(gazetteer.size()-2));
-            System.out.println(gazetteerNew.get(gazetteer.size()-1)); // tail
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    @Test @Ignore
     public void howItLookLike() {
         String str = "Sanford-Springvale Chamber of Commerce";
         str = "San Francisco Chinese Parent Committee School (historical)";
@@ -157,13 +99,13 @@ public class AppTest {
         //str = "T T Well";
         //str = "A and K";
         //str = "@amandapalmer http://twitpic.com/dbfan - This rules!";
-        //str = "@trapped it's really good!!! It is made by a brewery in San Fransisco... It has a hint of watermelon but it is not over powering!!";
+        str = "@trapped it's really good!!! It is made by a brewery in San Fransisco... It has a hint of watermelon but it is not over powering!!";
         //str = "If a relationship has to be a secret, you shouldn't be in it.";
         List<String> stringList = null;
 
-        //stringList = util.tokenizeString(standardAnalyzer, str);
+        stringList = util.tokenizeString(standardAnalyzer, str);
         //stringList = util.tokenizeString(simpleAnalyzer, str);
-        stringList = util.tokenizeString(gazetteerAnalyzer, str);
+        //stringList = util.tokenizeString(gazetteerAnalyzer, str);
 
         String s = String.join(" ", stringList);
         System.out.println(s);
@@ -185,7 +127,9 @@ public class AppTest {
         ged.setDeletion(-1);
         ged.setInsertion(-1);
 
-        SoundexAdapter soundexAdapter = new SoundexAdapter();
+        NGramDistance ngm = new NGramDistance();
+
+        SoundexAdapter sdx = new SoundexAdapter();
 
         String tweet = "@trapped it's really good!!! It is made by a brewery in San Fransisco... It has a hint of watermelon but it is not over powering!!";
         List<String> tweetTokens = util.tokenizeString(standardAnalyzer, tweet);
@@ -212,9 +156,11 @@ public class AppTest {
         System.out.println("tweetLength: " +tweetLength);
         System.out.println();
 
+        System.out.println("....::MULTI-WORD::....");
+
         for (String aTweetToken : tweetTokens) {
             for (String location : locations) {
-                List<String> locationToken = util.tokenizeString(simpleAnalyzer, location);
+                List<String> locationToken = util.tokenizeString(gazetteerAnalyzer, location);
                 location = String.join(" ", locationToken);
                 int chunkSize = location.length();
 
@@ -227,12 +173,28 @@ public class AppTest {
                     tail = tweetLength;
                 }
                 String term = tweet.substring(head, tail);
-                //System.out.println("head: " + head + "\t" + term + "\t" + location + "\t" + ged.getScore(term, location)
-                //        + "\t" + soundexAdapter.getScore(term, location) + "\t" +soundexAdapter.encode(location));
+                System.out.println("head: " + head + "\t" + term + "\t" + location
+                        + "\t" + ged.getScore(term, location)
+                        + "\t" + sdx.getScore(term, location)
+                        //+ "\t" + ged.getScore(sdx.encode(term), sdx.encode(location))
+                        + "\t" + ngm.getScore(term, location)
+                );
+            }
+        }
 
-                //System.out.println();
-                System.out.println("head: " + head + "\t" + term + "\t" + location + "\t"
-                        + ged.getScore(soundexAdapter.encode(term), soundexAdapter.encode(location)));
+        System.out.println("....::SINGLE-WORD::....");
+
+        for (String aTweetToken : tweetTokens) {
+            for (String location : locations) {
+
+                location = String.join(" ", util.tokenizeString(gazetteerAnalyzer, location)); //preprocessed
+
+                System.out.println(aTweetToken + "\t" + location
+                        + "\t" + ged.getScore(aTweetToken, location)
+                        + "\t" + sdx.getScore(aTweetToken, location)
+                        //+ "\t" + ged.getScore(sdx.encode(aTweetToken), sdx.encode(location))
+                        + "\t" + ngm.getScore(aTweetToken, location)
+                );
             }
         }
     }
