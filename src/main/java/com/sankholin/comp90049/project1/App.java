@@ -5,6 +5,7 @@ import com.sankholin.comp90049.project1.editdistance.GlobalEditDistance;
 import com.sankholin.comp90049.project1.editdistance.LocalEditDistance;
 import com.sankholin.comp90049.project1.editdistance.NGramDistance;
 import com.sankholin.comp90049.project1.model.MatchTermCandidate;
+import com.sankholin.comp90049.project1.neighbourhood.AgrepWrapper;
 import com.sankholin.comp90049.project1.phonetic.SoundexAdapter;
 import com.sankholin.comp90049.project1.tool.Utilities;
 import org.apache.commons.configuration2.Configuration;
@@ -27,7 +28,7 @@ import java.util.List;
 
 public class App {
 
-    @Option(name = "-a", usage = "ged=Global Edit Distance,led=Local Edit Distance,ngm=NGram,sdx=Soundex")
+    @Option(name = "-a", usage = "ged=Global Edit Distance,led=Local Edit Distance,ngm=NGram,sdx=Soundex,nbh=Neighbourhood Search")
     private String algorithm = "ged";
 
     @Option(name = "--single", usage = "Single Word Location, ignore if '-a led'")
@@ -122,12 +123,7 @@ public class App {
                 logger.warn("Upper limit option [-zz] is only applied for m > i,d,r and Soundex.");
             }
 
-            if (single && !algorithm.equalsIgnoreCase("led")) {
-                logger.info("option: --single");
-                logger.info("Processing in single-word gazetteer matching...");
-            } else {
-                logger.info("Processing in multi-word gazetteer matching...");
-            }
+            //
 
             int minNGramLength = config.getInt("minngramlength");
             int maxNGramLength = config.getInt("maxngramlength");
@@ -137,6 +133,14 @@ public class App {
 
             // Default to true for GED and LED (m < i,d,r) and NGram
             isMinimalScore = true;
+
+            File tweetsFile = new File(config.getString("tweets"));
+
+            File gazetteerFile = new File(config.getString("gazetteer.preprocessed"));
+            if (!gazetteerFile.canRead()) {
+                logger.error("Preprocessed gazetteer file is not found. Please run with option '--preprocess gaze'");
+                logger.error("This Gazetteer preprocessing is only required to be done once.");
+            }
 
             //setup GlobalEditDistance
             if (algorithm.equalsIgnoreCase("ged")) {
@@ -183,20 +187,30 @@ public class App {
                 stringSearch = soundexAdapter;
             }
 
+            if (algorithm.equalsIgnoreCase("nbh")) {
+
+                new AgrepWrapper(config, tweetsFile, gazetteerFile, startIdx, dryRun, out, candidateLimit);
+
+                // The rest of the operation redirect to AgrepWrapper and exit
+                // Line below won't be required executing anymore
+                return;
+            }
+
             if (stringSearch == null) {
                 logger.error("Unrecognized algorithm option '-a " + algorithm  + "'. Halt!");
                 return;
             }
 
-            File tweetsFile = new File(config.getString("tweets"));
+            // try as lazy as possible
             tweets = FileUtils.readLines(tweetsFile, "UTF-8");
-
-            File gazetteerFile = new File(config.getString("gazetteer.preprocessed"));
-            if (!gazetteerFile.canRead()) {
-                logger.error("Preprocessed gazetteer file is not found. Please run with option '--preprocess gaze'");
-                logger.error("This Gazetteer preprocessing is only required to be done once.");
-            }
             gazetteer = FileUtils.readLines(gazetteerFile, "UTF-8");
+
+            if (single && !algorithm.equalsIgnoreCase("led")) {
+                logger.info("option: --single");
+                logger.info("Processing in single-word gazetteer matching...");
+            } else {
+                logger.info("Processing in multi-word gazetteer matching...");
+            }
 
             writer = new CSVWriter(new FileWriter(out));
             String[] titleText = new String[4+candidateLimit*3];
