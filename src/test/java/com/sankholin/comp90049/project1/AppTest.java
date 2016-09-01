@@ -1,6 +1,7 @@
 package com.sankholin.comp90049.project1;
 
 import com.sankholin.comp90049.project1.editdistance.GlobalEditDistance;
+import com.sankholin.comp90049.project1.editdistance.LocalEditDistance;
 import com.sankholin.comp90049.project1.editdistance.NGramDistance;
 import com.sankholin.comp90049.project1.phonetic.SoundexAdapter;
 import com.sankholin.comp90049.project1.tool.GazetteerAnalyzer;
@@ -37,7 +38,7 @@ public class AppTest {
         Configurations configs = new Configurations();
         try {
             config = configs.properties(configFile);
-            gazetteerFile = new File(config.getString("gazetteer.preprocessed"));
+            gazetteerFile = new File(config.getString("gazetteer"));
             tweetsFile = new File(config.getString("tweets"));
         } catch (ConfigurationException e) {
             e.printStackTrace();
@@ -64,7 +65,7 @@ public class AppTest {
 
             int idx=1, cnt=0;
             for (String aGazetteer : gazetteer) {
-                List<String> aGazetteerTokenList = util.tokenizeString(simpleAnalyzer, aGazetteer);
+                List<String> aGazetteerTokenList = util.tokenizeString(gazetteerAnalyzer, aGazetteer);
                 String aFilteredGazetteer = String.join(" ", aGazetteerTokenList);
                 int chunkSize = aFilteredGazetteer.length();
                 if (chunkSize < 3) { //location name with less than x characters
@@ -83,29 +84,29 @@ public class AppTest {
     @Test @Ignore
     public void howItLookLike() {
         String str = "Sanford-Springvale Chamber of Commerce";
-        str = "San Francisco Chinese Parent Committee School (historical)";
-        str = "San Francisco Banco Number 60";
-        str = "37N03W33BC__01 Well";
+        //str = "San Francisco Chinese Parent Committee School (historical)";
+        //str = "San Francisco Banco Number 60";
+        //str = "37N03W33BC__01 Well";
         //str = "40 B Water Well";
         //str = "3C - Capehart Communication Collection Building";
         //str = "519 / Wrigley Volunteer Fire Department";
         //str = "\"Alson H Smith, Junior Library\"";
-        //str = "“Rebecca of the Well” Fountain";
+        str = "“Rebecca of the Well” Fountain";
         //str = "A-8 Water Well";
         //str = "A 9.4 Lateral";
         //str = "89'er Museum Park";
         //str = "3-M's Airport";
         //str ="Y";
         //str = "T T Well";
-        //str = "A and K";
+        str = "A and K";
         //str = "@amandapalmer http://twitpic.com/dbfan - This rules!";
-        str = "@trapped it's really good!!! It is made by a brewery in San Fransisco... It has a hint of watermelon but it is not over powering!!";
+        //str = "@trapped it's really good!!! It is made by a brewery in San Fransisco... It has a hint of watermelon but it is not over powering!!";
         //str = "If a relationship has to be a secret, you shouldn't be in it.";
         List<String> stringList = null;
 
-        stringList = util.tokenizeString(standardAnalyzer, str);
+        //stringList = util.tokenizeString(standardAnalyzer, str);
         //stringList = util.tokenizeString(simpleAnalyzer, str);
-        //stringList = util.tokenizeString(gazetteerAnalyzer, str);
+        stringList = util.tokenizeString(gazetteerAnalyzer, str);
 
         String s = String.join(" ", stringList);
         System.out.println(s);
@@ -122,10 +123,16 @@ public class AppTest {
     @Test @Ignore
     public void testChunk() {
         GlobalEditDistance ged = new GlobalEditDistance();
-        ged.setMatch(1);
-        ged.setReplace(-1);
-        ged.setDeletion(-1);
-        ged.setInsertion(-1);
+        ged.setMatch(0);
+        ged.setReplace(1);
+        ged.setDeletion(1);
+        ged.setInsertion(1);
+
+        LocalEditDistance led = new LocalEditDistance();
+        led.setMatch(1);
+        led.setReplace(-1);
+        led.setDeletion(-1);
+        led.setInsertion(-1);
 
         NGramDistance ngm = new NGramDistance();
 
@@ -138,8 +145,8 @@ public class AppTest {
 
         List<String> locations = new ArrayList<>();
         //locations.add(" ");
-        locations.add("San Francisco Pass");
-        //locations.add("San Francisco");
+        //locations.add("San Francisco Pass");
+        locations.add("San Francisco");
         //locations.add("Sahm Park");
         //locations.add("R E A Canyon");
         //locations.add("3-H Lake");
@@ -173,15 +180,27 @@ public class AppTest {
                     tail = tweetLength;
                 }
                 String term = tweet.substring(head, tail);
+/*
                 System.out.println("head: " + head + "\t" + term + "\t" + location
                         + "\t" + ged.getScore(term, location)
                         + "\t" + sdx.getScore(term, location)
                         //+ "\t" + ged.getScore(sdx.encode(term), sdx.encode(location))
                         + "\t" + ngm.getScore(term, location)
                 );
+*/
+
+                System.out.println(term
+                        + "\t" + location
+                        + "\t" + ged.getScore(term, location)
+                        + "\t" + ngm.getScore(term, location)
+                        + "\t" + sdx.getScore(term, location)
+                        + "\t" + ged.getScore(sdx.encode(term), sdx.encode(location))
+                );
+
             }
         }
 
+        System.out.println();
         System.out.println("....::SINGLE-WORD::....");
 
         for (String aTweetToken : tweetTokens) {
@@ -189,13 +208,22 @@ public class AppTest {
 
                 location = String.join(" ", util.tokenizeString(gazetteerAnalyzer, location)); //preprocessed
 
-                System.out.println(aTweetToken + "\t" + location
+                System.out.println(aTweetToken
+                        + "\t" + location
                         + "\t" + ged.getScore(aTweetToken, location)
-                        + "\t" + sdx.getScore(aTweetToken, location)
-                        //+ "\t" + ged.getScore(sdx.encode(aTweetToken), sdx.encode(location))
                         + "\t" + ngm.getScore(aTweetToken, location)
+                        + "\t" + sdx.getScore(aTweetToken, location)
+                        + "\t" + ged.getScore(sdx.encode(aTweetToken), sdx.encode(location))
                 );
             }
+        }
+
+        System.out.println();
+        System.out.println("....::LED::....");
+
+        for (String location : locations) {
+            location = String.join(" ", util.tokenizeString(gazetteerAnalyzer, location));
+            System.out.println(tweet + "\t" + location + "\t" + led.getScore(tweet, location));
         }
     }
 }
