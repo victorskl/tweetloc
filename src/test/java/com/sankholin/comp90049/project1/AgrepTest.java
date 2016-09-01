@@ -66,10 +66,12 @@ public class AgrepTest {
         //}
 
         printAgrepOut("san francisco");
-        printAgrepOut("california");
-        printAgrepOut("nevitt Woods");
-        printAgrepOut("watermelon");
-        printAgrepOut("contra costa");
+        printAgrepOut("burt");
+        printAgrepOut("bute");
+        printAgrepOut("c b");
+        printAgrepOut("cad");
+        printAgrepOut("cyr");
+
 
         System.out.println();
 
@@ -112,6 +114,9 @@ public class AgrepTest {
 
         } catch (InterruptedException | IOException e) {
             e.printStackTrace();
+        } catch (IllegalThreadStateException ie) {
+            System.out.println();
+            logger.warn("IllegalThreadStateException at dictionary: " + term + ", bug: JDK-8042019, action: continue...");
         }
     }
 
