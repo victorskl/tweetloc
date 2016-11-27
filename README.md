@@ -82,11 +82,11 @@ You can pass `-a` option to specify the algorithm.
 
 The following are the implemented String Matching algorithms. More algorithms can be developed by implementing [`StringSearch.java`](src/main/java/com/sankholin/comp90049/project1/StringSearch.java) interface.
 
-ged = Global Edit Distance (default if no -a is pass)
-led = Local Edit Distance
-ngm = N-Gram Distance
-sdx = Soundex
-nbh = Neighbourhood Search (Agrep wrapper)
+* ged = Global Edit Distance (default if no -a is pass)
+* led = Local Edit Distance
+* ngm = N-Gram Distance
+* sdx = Soundex
+* nbh = Neighbourhood Search (Agrep wrapper)
 
 
 Specify Output File
