@@ -2,9 +2,12 @@
 ## this project specific
 *.csv
 *.log
-res/
-dist/
-report/
+
+*.aux
+*.bbl
+*.blg
+*.lyx
+*.synctex.gz
 
 #############
 
