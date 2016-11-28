@@ -132,7 +132,7 @@ It is good idea to run with [`screen`](https://www.google.com.au/search?q=linux%
 
 Notes
 -----
-This assignment work is done for COMP90049 Project 1 assessment 2016 SM2, The University of Melbourne. The implementation still has room for improvement. You may cite this work as follow.
+This assignment work is done for COMP90049 Project 1 assessment 2016 SM2, The University of Melbourne. You can read [the report](report/SanKhoLin_829463_COMP90049_Project1_Report.pdf) on background context, though it discusses more on the data that I have worked with. You may also want to read the related [`tweetlocml`](https://github.com/victorskl/tweetlocml) assignment. The implementation still has room for improvement. You may cite this work as follow.
 
 LaTeX/BibTeX:
 
