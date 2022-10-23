@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/74888344.svg)](https://zenodo.org/badge/latestdoi/74888344)
+
 About
 -----
 The **tweetloc** application attempt to perform [Approximate String Searching](https://www.google.com.au/search?q=Approximate+String+Search) and, experiment some String Matching algorithms (<a href="#algo">see below</a>) and observe their effectiveness. It is using a gazetteer dictionary to approximate string match of a possible location name from Twitter user tweets. 
