@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import static org.apache.lucene.analysis.classic.ClassicAnalyzer.STOP_WORDS_SET;
+
 public class App {
 
     @Option(name = "-a", usage = "ged=Global Edit Distance,led=Local Edit Distance,ngm=NGram,sdx=Soundex,nbh=Neighbourhood Search")
@@ -65,7 +67,7 @@ public class App {
     private int candidateLimit = 1;
     //private int minCharLocationName = 2;
 
-    private StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
+    private final StandardAnalyzer standardAnalyzer = new StandardAnalyzer(STOP_WORDS_SET);
     //private GazetteerAnalyzer gazetteerAnalyzer = new GazetteerAnalyzer();
 
     public static void main(String[] args) {

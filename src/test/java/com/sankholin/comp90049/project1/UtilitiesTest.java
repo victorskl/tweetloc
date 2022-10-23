@@ -6,13 +6,14 @@ import org.junit.Test;
 
 import java.util.List;
 
+import static org.apache.lucene.analysis.classic.ClassicAnalyzer.STOP_WORDS_SET;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 
 public class UtilitiesTest {
 
-    private Utilities util = Utilities.getInstance();
-    private StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
+    private final Utilities util = Utilities.getInstance();
+    private final StandardAnalyzer standardAnalyzer = new StandardAnalyzer(STOP_WORDS_SET);
 
     @Test
     public void testSingleton() {
